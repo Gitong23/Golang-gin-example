@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"github.com/Gitong23/go-gin/auth"
+	"github.com/Gitong23/go-gin/limit"
 	"github.com/Gitong23/go-gin/todo"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
-
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
@@ -26,12 +29,20 @@ var (
 
 func main() {
 
+	// _, err := os.Create("/tmp/live")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// defer os.Remove("/tmp/live")
+
 	err := godotenv.Load("local.env")
 	if err != nil {
 		log.Println("please consider environment variable: %s", err)
 	}
 
-	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	db, err := gorm.Open(mysql.Open(os.Getenv("DB_CONN")), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}
@@ -39,6 +50,15 @@ func main() {
 	db.AutoMigrate(&todo.Todo{})
 
 	r := gin.Default()
+	r.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"http://localhost:8081"},
+		AllowHeaders: []string{
+			"Origin",
+			"Authorization",
+			"TransactionID",
+		},
+	}))
+	r.GET("/limitz", limit.LimitedHandler)
 	r.GET("/x", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"buildcommit": buildcommit,
@@ -59,6 +79,7 @@ func main() {
 
 	handler := todo.NewTodoHandler(db)
 	protected.POST("/todos", handler.NewTask)
+	protected.GET("/todos", handler.List)
 	r.Run()
 
 	//graceful shutdown
@@ -89,4 +110,5 @@ func main() {
 	if err := s.Shutdown(timeoutCtx); err != nil {
 		fmt.Println(err)
 	}
+
 }
